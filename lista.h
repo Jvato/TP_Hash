@@ -61,8 +61,8 @@ size_t lista_largo(const lista_t *lista);
 // Post: se eliminaron todos los elementos de la lista.
 void lista_destruir(lista_t *lista, void (*destruir_dato)(void *));
 
+void pruebas_lista_estudiante(void);
 
-void lista_iterar(lista_t *lista, bool visitar(void *dato, void *extra), void *extra);
 
 // Crea un iterador de lista
 // Post: Se crea un iterador que apunta al inicio de la lista
@@ -105,6 +105,5 @@ void *lista_iter_borrar(lista_iter_t *iter);
 // Pre: La lista fue creada
 // Post: Se le aplico la funcion visitar a la cantidad de objetos deseados
 void lista_iterar(lista_t *lista, bool visitar(void *dato, void *extra), void *extra);
-void pruebas_lista_estudiante(void);
 
 #endif // LISTA_H
