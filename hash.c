@@ -19,7 +19,7 @@ typedef struct hash_iter {
 	hash_t * hash;
 } hash_iter_t;
 
-int  _siguiente_elemento_valido(const hash_t * hash, size_t inicio) {
+int  _siguiente_elemento_valido(const hash_t * hash, int inicio) {
 	int i;
 	for (i = inicio; i < hash->capacidad; i++) {
 		if (hash->tabla[i] != NULL && lista_esta_vacia(hash->tabla[i]) == false)
@@ -42,7 +42,7 @@ hash_iter_t *hash_iter_crear(const hash_t *hash) {
 		lista_iter_destruir(lista_iter);
 		return NULL;
 	}
-	iter->hash = hash;
+	iter->hash = (hash_t *)hash;
 	iter->lista_iter = lista_iter;
 	iter->posc = posc;
 	return iter;
@@ -57,7 +57,7 @@ bool hash_iter_avanzar(hash_iter_t *iter) {
 	if (lista_iter_avanzar(iter->lista_iter) == false)
 		return false;
 	if (lista_iter_al_final(iter->lista_iter) == true) {
-		posc = _siguiente_elemento_valido(iter->hash,iter->posc);
+		posc = _siguiente_elemento_valido(iter->hash,(int)iter->posc);
 		if (posc == -1)
 			return true;
 		lista_iter_destruir(iter->lista_iter);
