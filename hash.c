@@ -2,7 +2,9 @@
 #include "lista.h"
 #include <string.h>
 #define TAMANIO_INICIAL 100
-
+#define FACTOR_CARGA_MIN 2.0
+#define FACTOR_CARGA_MAX 3.0
+#define POTENCIA_AUMENTAR_MEMORIA 2
 
 typedef struct campo{
     char* clave;
@@ -13,7 +15,7 @@ struct hash{
     size_t cantidad;
     size_t capacidad;
     lista_t** tabla;
-    hash_destruir_dato_t* funcion_destruccion;
+    hash_destruir_dato_t funcion_destruccion;
 };
 
 typedef struct hash_iter {
@@ -109,26 +111,55 @@ unsigned int FNVHash(const char* str, size_t length) {
 	return hash;
 }
 
+void _inicializar_vector(lista_t **tabla, size_t capacidad) {
+	for (size_t i = 0; i < capacidad; i++)
+		tabla[i] = NULL;
+}
+
 hash_t *hash_crear(hash_destruir_dato_t destruir_dato){
     hash_t* hash = malloc(sizeof(hash_t));
-    if(hash == NULL){
-        return NULL;
-    }
+    if(hash == NULL)	return NULL;
 
     hash->funcion_destruccion = destruir_dato;
     hash->cantidad = 0;
-    hash->cantidad = TAMANIO_INICIAL;
-    hash->tabla = malloc(hash->cantidad * sizeof(void*));
+    hash->capacidad = TAMANIO_INICIAL;
+    hash->tabla = calloc(hash->capacidad,sizeof(lista_t*));
     if(hash->tabla == NULL){
         free(hash);
         return NULL;
     }
-    //aca faltaria rellenar la tabla con listas vacias
-
     return hash;
+}
+campo_t * crear_campo(const char * clave, void *dato) {
+	campo_t * campo = malloc(sizeof(campo_t));
+	if (campo == NULL)
+		return NULL;
+	campo->clave = (char *)clave;
+	campo->dato = dato;
+	return campo;
+}
+
+
+bool _redimensionar_hash(hash_t * hash) {
+	lista_t **tabla_nueva;
+	if ((float)hash->cantidad / hash->capacidad > FACTOR_CARGA_MIN && (float)hash->cantidad / hash->capacidad < FACTOR_CARGA_MAX) {
+		size_t nueva_capacidad = POTENCIA_AUMENTAR_MEMORIA*hash->capacidad;
+		tabla_nueva = calloc(nueva_capacidad,sizeof(lista_t *));
+		hash_iter_t * iter = hash_iter_crear(hash);
+		if (iter == NULL) {
+			free(tabla_nueva);
+			return false;
+		}
+		while (hash_iter_al_final(iter) == false) {
+			const char * cadena = hash_iter_ver_actual(iter);
+			size_t indice = FNVHash(cadena,nueva_capacidad);
+			if (lista_insertar_ultimo(tabla_nueva[indice],) == true)
+		}
+		// ME FALTA COMPLETAR ESTA PARTE; DEJAME LAS FUNCIONES HASTA HASH GUARDAR
 }
 
 bool hash_guardar(hash_t *hash, const char *clave, void *dato){
+	if (_redimensionar_hash(hash) == false)    return false;
     //falta aplicar algun criterio de redimension, de ser necesario, llamando una funcion
     size_t indice = FNVHash(clave, hash->capacidad); //mover esto a una funcion que solo me calcula el indice
     campo_t* campo = malloc(sizeof(campo_t));
