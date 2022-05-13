@@ -1,10 +1,24 @@
 #include "hash.h"
 #include "lista.h"
 #include <string.h>
+#include <stdio.h>
 #define TAMANIO_INICIAL 100
 #define FACTOR_CARGA_MIN 2.0
 #define FACTOR_CARGA_MAX 3.0
 #define POTENCIA_AUMENTAR_MEMORIA 2
+
+typedef struct nodo nodo_t;
+
+struct lista {
+	nodo_t * prim;
+	nodo_t * ult;
+	size_t largo;
+};
+
+struct nodo {
+	void * dato;
+	nodo_t * prox;
+};
 
 typedef struct campo{
     char* clave;
@@ -97,19 +111,22 @@ void hash_iter_destruir(hash_iter_t* iter) {
 
 // esta funcion de hasheo se llama FNV y la sacamos de este link
 // https://www.programmingalgorithms.com/algorithm/fnv-hash/c/
+// se le hizo unos cambios minimos, como cambiar el tipo del dato que devuelve a size_t 
+// tambien se casteo (size_t)(*str) para que compile y se uso el operador % en el return para que 
+// el numero devuelto entre en el rango de la tabla
 
-unsigned int FNVHash(const char* str, size_t length) {
+size_t FNVHash(const char* str, size_t length) {
 	const unsigned int fnv_prime = 0x811C9DC5;
-	unsigned int hash = 0;
-	unsigned int i = 0;
+	size_t hash = 0;
+	size_t i = 0;
 
 	for (i = 0; i < length; str++, i++)
 	{
 		hash *= fnv_prime;
-		hash = hash^(unsigned int)(*str);
+		hash = hash^(size_t)(*str);
 	}
-
-	return hash;
+	
+	return hash % length;
 }
 
 void _inicializar_vector(lista_t **tabla, size_t capacidad) {
@@ -124,13 +141,17 @@ hash_t *hash_crear(hash_destruir_dato_t destruir_dato){
     hash->funcion_destruccion = destruir_dato;
     hash->cantidad = 0;
     hash->capacidad = TAMANIO_INICIAL;
-    hash->tabla = calloc(hash->capacidad,sizeof(lista_t*));
+    hash->tabla = malloc(sizeof(lista_t) * hash->capacidad);
     if(hash->tabla == NULL){
         free(hash);
         return NULL;
     }
+	for(size_t i = 0; i < TAMANIO_INICIAL; i++){
+		hash->tabla[i] = NULL;
+	}
     return hash;
 }
+
 campo_t * crear_campo(const char * clave, void *dato) {
 	campo_t * campo = malloc(sizeof(campo_t));
 	if (campo == NULL)
@@ -164,9 +185,8 @@ bool _redimensionar_hash(hash_t * hash) {
 }
 
 bool hash_guardar(hash_t *hash, const char *clave, void *dato){
-	if (_redimensionar_hash(hash) == false)    return false;
-    //falta aplicar algun criterio de redimension, de ser necesario, llamando una funcion
-    size_t indice = FNVHash(clave, hash->capacidad); //mover esto a una funcion que solo me calcula el indice
+	//if (_redimensionar_hash(hash) == false)    return false;
+    size_t indice = FNVHash(clave, hash->capacidad);
     campo_t* campo = malloc(sizeof(campo_t));
     if(campo == NULL){
         return false;
@@ -180,22 +200,33 @@ bool hash_guardar(hash_t *hash, const char *clave, void *dato){
         hash->tabla[indice] = lista;
         lista_insertar_ultimo(lista, campo);
     }else{
-        //creo un iterador y voy hasta la clave y la piso con el campo
+		lista_t* lista = hash->tabla[indice];
+		lista_iter_t* iter = lista_iter_crear(lista);
+		while(!lista_iter_al_final(iter)){
+			campo_t* campo = lista_iter_ver_actual(iter);
+			if(campo->clave == clave){
+				campo->dato = dato;
+				lista_iter_destruir(iter);
+				return true;
+			}
+			lista_iter_avanzar(iter);
+		}
     }
+	hash->cantidad++;
     return true;
 }
 
-void* hash_iterar_indice(hash_t *hash, const char *clave, lista_t* lista, bool destruir){
+campo_t* hash_iterar_indice(hash_t *hash, const char *clave, lista_t* lista, bool destruir){
     lista_iter_t* iter = lista_iter_crear(lista);
     while(!lista_iter_al_final(iter)){
         campo_t* campo = lista_iter_ver_actual(iter);
         if(campo->clave == clave && !destruir){
             lista_iter_destruir(iter);
-            return campo->clave;
+            return campo;
         }else if(campo->clave == clave && destruir){
-            void* clave = lista_iter_borrar(iter);
+            campo_t* campo_borrado = lista_iter_borrar(iter);
             lista_iter_destruir(iter);
-            return clave;
+            return campo_borrado;
         }
         lista_iter_avanzar(iter);
     }
@@ -209,7 +240,9 @@ void *hash_borrar(hash_t *hash, const char *clave){
     }else{
         size_t indice = FNVHash(clave, hash->capacidad);
         lista_t* lista = hash->tabla[indice];
-        return hash_iterar_indice((hash_t *)hash, clave, lista, true);
+		campo_t* campo = hash_iterar_indice((hash_t *)hash, clave, lista, true);
+		hash->cantidad--;
+        return campo->dato;
     }
     return NULL;
 }
@@ -220,13 +253,16 @@ void *hash_obtener(const hash_t *hash, const char *clave){
     }else{
         size_t indice = FNVHash(clave, hash->capacidad);
         lista_t* lista = hash->tabla[indice];
-        void* valor = hash_iterar_indice((hash_t *)hash, clave, lista, false);
-        return valor;
+        campo_t* campo = hash_iterar_indice((hash_t *)hash, clave, lista, false);
+        return campo->dato;
     }
 }
 
 bool hash_pertenece(const hash_t *hash, const char *clave){
     size_t indice = FNVHash(clave, hash->capacidad);
+	if(hash->tabla[indice] == NULL){
+		return false;
+	}
     lista_t* lista = hash->tabla[indice];
     if(lista_esta_vacia(lista)){
         return false;
@@ -244,8 +280,12 @@ size_t hash_cantidad(const hash_t *hash){
 
 void hash_destruir(hash_t *hash){
 	for(size_t i = 0; i < hash->capacidad; i++){
+		if(hash->tabla[i] == NULL){
+			continue;
+		}
 		lista_t* lista = hash->tabla[i];
 		lista_destruir(lista, hash->funcion_destruccion);
 	}
+	free(hash->tabla);
 	free(hash);
 }
