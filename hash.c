@@ -48,13 +48,15 @@ int  _siguiente_elemento_valido(const hash_t * hash, int inicio) {
 }
 
 hash_iter_t *hash_iter_crear(const hash_t *hash) {
-	if (hash->cantidad == 0)
-		return NULL;
 	int posc;
 	lista_iter_t * lista_iter;
-	posc = _siguiente_elemento_valido(hash,0);
-	if (posc == -1)
-		return NULL;
+	if (hash->cantidad == 0) {
+		lista_t * lista = lista_crear();
+		hash->tabla[0] = lista;
+		posc = 0;
+	}
+	else 
+		posc = _siguiente_elemento_valido(hash,0);
 	lista_iter = lista_iter_crear(hash->tabla[posc]);	
 	hash_iter_t *iter = malloc(sizeof(hash_iter_t));
 	if (iter == NULL) {
@@ -156,63 +158,99 @@ campo_t * crear_campo(const char * clave, void *dato) {
 	campo_t * campo = malloc(sizeof(campo_t));
 	if (campo == NULL)
 		return NULL;
-	campo->clave = (char *)clave;
+	campo->clave = malloc(strlen(clave)+1);
+	if (campo->clave == NULL) {
+		free(campo);
+		return NULL;
+	}
+	strcpy(campo->clave,clave);
 	campo->dato = dato;
 	return campo;
 }
 
+void campo_destruir(campo_t * campo) {
+	free(campo->clave);
+	free(campo);
+}
+
+
+
+bool _hash_rehashear_nueva_tabla(hash_t * hash, hash_t * hash_aux) {
+	for (size_t i = 0; i < hash->capacidad; i++) {
+		if (hash->tabla[i] == NULL || lista_esta_vacia(hash->tabla[i]) == true)
+			continue;
+		lista_iter_t * lista_iter = lista_iter_crear(hash->tabla[i]);
+		if (lista_iter == NULL)
+			return false;
+		while (lista_iter_al_final(lista_iter) == false) {
+			campo_t * campo_actual = lista_iter_ver_actual(lista_iter);
+			campo_t * campo_aux = crear_campo(campo_actual->clave,campo_actual->dato);
+			if (campo_aux == NULL) {
+				lista_iter_destruir(lista_iter);
+				return false;
+			}
+			size_t indice = FNVHash(campo_aux->clave,hash_aux->capacidad);
+			lista_insertar_ultimo(hash_aux->tabla[indice],campo_aux);
+			lista_iter_avanzar(lista_iter);
+		}
+		lista_iter_destruir(lista_iter);
+	}
+	return true;
+}
+
 
 bool _redimensionar_hash(hash_t * hash) {
-	lista_t **tabla_nueva;
-	if ((float)(hash->cantidad / hash->capacidad) > FACTOR_CARGA_MIN && (float)(hash->cantidad / hash->capacidad) < FACTOR_CARGA_MAX) {
-		size_t nueva_capacidad = POTENCIA_AUMENTAR_MEMORIA*hash->capacidad;
-		tabla_nueva = calloc(nueva_capacidad,sizeof(lista_t *));
-		hash_iter_t * iter = hash_iter_crear(hash);
-		if (iter == NULL) {
-			free(tabla_nueva);
-			return false;
-		}
-		while (hash_iter_al_final(iter) == false) {
-			const char * cadena = hash_iter_ver_actual(iter);
-			size_t indice = FNVHash(cadena,nueva_capacidad);
-			if (lista_insertar_ultimo(tabla_nueva[indice], "ESTO ES PARA QUE COMPILE") == true){
+	size_t capacidad_nueva = POTENCIA_AUMENTAR_MEMORIA*hash->capacidad;
+	hash_t * hash_aux = hash_crear(NULL);
+	if (hash_aux == NULL)
+		return false;
+	lista_t **tabla_nueva = realloc(hash_aux->tabla,sizeof(lista_t *)*capacidad_nueva);
+	if (tabla_nueva == NULL) {
+		hash_destruir(hash_aux);
+		return false;
+	}
+	hash_aux->tabla = tabla_nueva;
+	hash->capacidad = capacidad_nueva;
+	if (_hash_rehashear_nueva_tabla(hash,hash_aux) == false) {
+		hash_destruir(hash_aux);
+		return false;
+	}
+	lista_t ** tabla_aux = hash_aux->tabla;
+	hash_aux->tabla = hash->tabla;
+	hash->tabla = tabla_aux;
+	hash->capacidad = capacidad_nueva;
+	hash_destruir(hash_aux);
+	return true;
+}
 
-			}
-		}
-		// ME FALTA COMPLETAR ESTA PARTE; DEJAME LAS FUNCIONES HASTA HASH GUARDAR
-	}	
-	return false; //ESTO ES PARA QUE COMPILE
+bool _hash_insertar_nuevo(hash_t * hash, campo_t * campo, size_t posc) {
+	if (hash->tabla[posc] == NULL) {
+		lista_t * lista = lista_crear();
+		hash->tabla[posc] = lista;
+	}
+	return lista_insertar_ultimo(hash->tabla[posc],campo);
 }
 
 bool hash_guardar(hash_t *hash, const char *clave, void *dato){
-	//if (_redimensionar_hash(hash) == false)    return false;
-    size_t indice = FNVHash(clave, hash->capacidad);
-    campo_t* campo = malloc(sizeof(campo_t));
-    if(campo == NULL){
-        return false;
-    }
-    // aca me tendria que guardar la clave con un malloc, fijarse en la clase de hashes:implementacion
-    // del 2022-02-29
-    campo->clave = (char *)clave;
-    campo->dato = dato;
-    if(!hash_pertenece(hash, clave)){
-        lista_t* lista = lista_crear();
-        hash->tabla[indice] = lista;
-        lista_insertar_ultimo(lista, campo);
-    }else{
-		lista_t* lista = hash->tabla[indice];
-		lista_iter_t* iter = lista_iter_crear(lista);
-		while(!lista_iter_al_final(iter)){
-			campo_t* campo = lista_iter_ver_actual(iter);
-			if(campo->clave == clave){
-				campo->dato = dato;
-				lista_iter_destruir(iter);
-				return true;
-			}
+	
+	if ((float)(hash->cantidad / hash->capacidad) > FACTOR_CARGA_MIN && (float)(hash->cantidad / hash->capacidad) < FACTOR_CARGA_MAX) {
+		if (_redimensionar_hash(hash) == false)
+			return false;
+	}
+	size_t indice = FNVHash(clave,hash->capacidad);
+    	if(!hash_pertenece(hash, clave)){
+		campo_t * campo = crear_campo(clave,dato);
+	    	if (_hash_insertar_nuevo(hash,campo,indice) == false)
+			    return false;
+	    	hash->cantidad++;
+    	}
+    	else {
+		lista_iter_t* iter = lista_iter_crear(hash->tabla[indice]);
+		while (strcmp(((campo_t *)lista_iter_ver_actual(iter))->clave,clave) != 0)
 			lista_iter_avanzar(iter);
-		}
-    }
-	hash->cantidad++;
+		((campo_t *)lista_iter_ver_actual(iter))->dato = dato;
+		lista_iter_destruir(iter);
+    	}
     return true;
 }
 
