@@ -122,14 +122,18 @@ size_t FNVHash(const char* str, size_t length) {
 	const unsigned int fnv_prime = 0x811C9DC5;
 	size_t hash = 0;
 	size_t i = 0;
-
 	for (i = 0; i < length; str++, i++)
 	{
 		hash *= fnv_prime;
 		hash = hash^(size_t)(*str);
 	}
 	
-	return hash % length;
+	return hash;
+}
+
+size_t FNVHash_normalizada(const char * clave, size_t largo) {
+	size_t valor = FNVHash(clave,strlen(clave));	
+	return valor%largo;
 }
 
 void _inicializar_vector(lista_t **tabla, size_t capacidad) {
@@ -190,7 +194,7 @@ bool _hash_rehashear_nueva_tabla(hash_t * hash, hash_t * hash_aux) {
 				lista_iter_destruir(lista_iter);
 				return false;
 			}
-			size_t indice = FNVHash(campo_aux->clave,hash_aux->capacidad);
+			size_t indice = FNVHash_normalizada(campo_aux->clave,hash_aux->capacidad);
 			if (hash_aux->tabla[indice] == NULL)
 				hash_aux->tabla[indice] = lista_crear();
 			lista_insertar_ultimo(hash_aux->tabla[indice],campo_aux);
@@ -224,6 +228,7 @@ bool _redimensionar_hash(hash_t * hash) {
 	hash_aux->capacidad =hash->capacidad;
 	hash->capacidad = capacidad_nueva;
 	hash_destruir(hash_aux);
+	hash_aux->cantidad = hash->cantidad;
 	return true;
 }
 
@@ -236,12 +241,11 @@ bool _hash_insertar_nuevo(hash_t * hash, campo_t * campo, size_t posc) {
 }
 
 bool hash_guardar(hash_t *hash, const char *clave, void *dato){
-	
 	if (hash->cantidad/hash->capacidad >= FACTOR_DE_CARGA) {
 		if (_redimensionar_hash(hash) == false)
 			return false;
 	}
-	size_t indice = FNVHash(clave,hash->capacidad);
+	size_t indice = FNVHash_normalizada(clave,hash->capacidad);
     	if(!hash_pertenece(hash, clave)){
 		campo_t * campo = crear_campo(clave,dato);
 	    	if (_hash_insertar_nuevo(hash,campo,indice) == false)
@@ -320,7 +324,7 @@ void *hash_obtener(const hash_t *hash, const char *clave){
 }
 
 bool hash_pertenece(const hash_t *hash, const char *clave){
-	bool estado;
+	bool estado =  false;
 	hash_iter_t * iter = hash_iter_crear(hash);
 	if (iter == NULL)
 		return false;
