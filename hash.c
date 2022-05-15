@@ -182,8 +182,12 @@ void campo_destruir(campo_t * campo) {
 
 bool _hash_rehashear_nueva_tabla(hash_t * hash, hash_t * hash_aux) {
 	for (size_t i = 0; i < hash->capacidad; i++) {
-		if (hash->tabla[i] == NULL || lista_esta_vacia(hash->tabla[i]) == true)
+		if (hash->tabla[i] == NULL)
 			continue;
+		if (lista_esta_vacia(hash->tabla[i]) == true)
+				continue;
+		//if (hash->tabla[i] == NULL || lista_esta_vacia(hash->tabla[i]) == true)
+			//continue;
 		lista_iter_t * lista_iter = lista_iter_crear(hash->tabla[i]);
 		if (lista_iter == NULL)
 			return false;
@@ -205,6 +209,10 @@ bool _hash_rehashear_nueva_tabla(hash_t * hash, hash_t * hash_aux) {
 	return true;
 }
 
+void _inicializar_tabla(lista_t **tabla,size_t largo) {
+	for (size_t i = 0; i < largo; i++)
+		tabla[i] = NULL;
+}
 
 bool _redimensionar_hash(hash_t * hash) {
 	size_t capacidad_nueva = POTENCIA_AUMENTAR_MEMORIA*hash->capacidad;
@@ -216,6 +224,7 @@ bool _redimensionar_hash(hash_t * hash) {
 		hash_destruir(hash_aux);
 		return false;
 	}
+	_inicializar_tabla(tabla_nueva,capacidad_nueva);
 	hash_aux->tabla = tabla_nueva;
 	hash_aux->capacidad = capacidad_nueva;
 	if (_hash_rehashear_nueva_tabla(hash,hash_aux) == false) {
