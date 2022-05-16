@@ -147,15 +147,12 @@ hash_t *hash_crear(hash_destruir_dato_t destruir_dato){
 
     hash->funcion_destruccion = destruir_dato;
     hash->cantidad = 0;
-    hash->capacidad = TAMANIO_INICIAL;
-    hash->tabla = malloc(sizeof(lista_t) * hash->capacidad);
+    hash->tabla = calloc(TAMANIO_INICIAL,sizeof(lista_t *));
     if(hash->tabla == NULL){
         free(hash);
         return NULL;
     }
-	for(size_t i = 0; i < TAMANIO_INICIAL; i++){
-		hash->tabla[i] = NULL;
-	}
+    hash->capacidad = TAMANIO_INICIAL;
     return hash;
 }
 
@@ -255,20 +252,31 @@ bool hash_guardar(hash_t *hash, const char *clave, void *dato){
 			return false;
 	}
 	size_t indice = FNVHash_normalizada(clave,hash->capacidad);
-    	if(!hash_pertenece(hash, clave)){
-		campo_t * campo = crear_campo(clave,dato);
-	    	if (_hash_insertar_nuevo(hash,campo,indice) == false)
-			    return false;
-	    	hash->cantidad++;
-    	}
-    	else {
-		lista_iter_t* iter = lista_iter_crear(hash->tabla[indice]);
-		while (strcmp(((campo_t *)lista_iter_ver_actual(iter))->clave,clave) != 0)
-			lista_iter_avanzar(iter);
-		((campo_t *)lista_iter_ver_actual(iter))->dato = dato;
-		lista_iter_destruir(iter);
-    	}
-    return true;
+	if (hash->tabla[indice] == NULL) {
+		hash->tabla[indice] = lista_crear();
+		if (hash->tabla[indice] == NULL)
+			return false;
+	}
+	lista_iter_t * lista_iter = lista_iter_crear(hash->tabla[indice]);
+	if (lista_iter == NULL)
+		return false;
+	while (lista_iter_al_final(lista_iter) == false) {
+		if (strcmp(((campo_t *)lista_iter_ver_actual(lista_iter))->clave,clave) == 0)
+			break;
+		lista_iter_avanzar(lista_iter);
+	}
+	campo_t * campo = crear_campo(clave,dato);
+	if (campo == NULL) {
+		lista_iter_destruir(lista_iter);
+		return false;
+	}
+	if (lista_iter_insertar(lista_iter,campo) == false) {
+		lista_iter_destruir(lista_iter);
+		return false;
+	}
+	lista_iter_destruir(lista_iter);
+	hash->cantidad++;
+	return true;	
 }
 
 campo_t* hash_iterar_indice(hash_t *hash, const char *clave, lista_t* lista, bool destruir){
@@ -361,7 +369,15 @@ void hash_destruir(hash_t *hash){
 			continue;
 		}
 		lista_t* lista = hash->tabla[i];
-		lista_destruir(lista, hash->funcion_destruccion);
+		lista_iter_t * lista_iter = lista_iter_crear(lista);
+		while (lista_iter_al_final(lista_iter) == false) {
+			campo_t * campo = lista_iter_ver_actual(lista_iter);
+			if (hash->funcion_destruccion != NULL)
+				hash->funcion_destruccion(campo->dato);
+			campo_destruir((campo_t *)lista_iter_borrar(lista_iter));
+		}
+		free(lista);
+		lista_iter_destruir(lista_iter);
 	}
 	free(hash->tabla);
 	free(hash);
