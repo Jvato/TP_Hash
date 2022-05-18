@@ -196,10 +196,23 @@ bool _hash_rehashear_nueva_tabla(hash_t * hash, hash_t * hash_aux) {
 				return false;
 			}
 			size_t indice = FNVHash_normalizada(campo_aux->clave,hash_aux->capacidad);
-			if (hash_aux->tabla[indice] == NULL)
+			if (hash_aux->tabla[indice] == NULL) {
 				hash_aux->tabla[indice] = lista_crear();
-			lista_insertar_ultimo(hash_aux->tabla[indice],campo_aux);
-			lista_iter_avanzar(lista_iter);
+				if (hash_aux->tabla[indice] == NULL) {
+					campo_destruir(campo_aux);
+					lista_iter_destruir(lista_iter);
+					return false;
+				}
+			}
+			if (lista_insertar_ultimo(hash_aux->tabla[indice],campo_aux) == false) {
+				campo_destruir(campo_aux);
+				lista_iter_destruir(lista_iter);
+				return false;
+			}
+			if (lista_iter_avanzar(lista_iter) == false) {
+				lista_iter_destruir(lista_iter);
+				return false;
+			}
 		}
 		lista_iter_destruir(lista_iter);
 	}
@@ -216,7 +229,9 @@ bool _redimensionar_hash(hash_t * hash) {
 	hash_t * hash_aux = hash_crear(NULL);
 	if (hash_aux == NULL)
 		return false;
-	lista_t **tabla_nueva = realloc(hash_aux->tabla,sizeof(lista_t *)*capacidad_nueva);
+	free(hash_aux->tabla);
+	lista_t **tabla_nueva = malloc(sizeof(lista_t *)*capacidad_nueva);
+	//lista_t **tabla_nueva = realloc(hash_aux->tabla,sizeof(lista_t *)*capacidad_nueva);
 	if (tabla_nueva == NULL) {
 		hash_destruir(hash_aux);
 		return false;
@@ -233,8 +248,8 @@ bool _redimensionar_hash(hash_t * hash) {
 	hash->tabla = tabla_aux;
 	hash_aux->capacidad =hash->capacidad;
 	hash->capacidad = capacidad_nueva;
-	hash_destruir(hash_aux);
 	hash_aux->cantidad = hash->cantidad;
+	hash_destruir(hash_aux);
 	return true;
 }
 
@@ -261,21 +276,25 @@ bool hash_guardar(hash_t *hash, const char *clave, void *dato){
 	if (lista_iter == NULL)
 		return false;
 	while (lista_iter_al_final(lista_iter) == false) {
-		if (strcmp(((campo_t *)lista_iter_ver_actual(lista_iter))->clave,clave) == 0)
+		campo_t * campo_actual = ((campo_t *)lista_iter_ver_actual(lista_iter));
+		if (strcmp(campo_actual->clave,clave) == 0) {
+			if (hash->funcion_destruccion != NULL)
+				hash->funcion_destruccion(campo_actual->dato);
+			campo_actual->dato = dato;
 			break;
+		}
 		lista_iter_avanzar(lista_iter);
 	}
-	campo_t * campo = crear_campo(clave,dato);
-	if (campo == NULL) {
-		lista_iter_destruir(lista_iter);
-		return false;
-	}
-	if (lista_iter_insertar(lista_iter,campo) == false) {
-		lista_iter_destruir(lista_iter);
-		return false;
+	if (lista_iter_al_final(lista_iter) == true) {
+		campo_t * campo = crear_campo(clave,dato);
+		if (campo == NULL) {
+			lista_iter_destruir(lista_iter);
+			return false;
+		}
+		lista_iter_insertar(lista_iter,campo);
+		hash->cantidad++;
 	}
 	lista_iter_destruir(lista_iter);
-	hash->cantidad++;
 	return true;	
 }
 
