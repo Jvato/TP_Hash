@@ -51,19 +51,22 @@ int  _siguiente_elemento_valido(const hash_t * hash, int inicio) {
 hash_iter_t *hash_iter_crear(const hash_t *hash) {
 	int posc;
 	lista_iter_t * lista_iter;
+	hash_iter_t * iter = malloc(sizeof(hash_iter_t));
+	if (iter == NULL)
+		return  NULL;
 	if (hash->cantidad == 0) {
-		lista_t * lista = lista_crear();
-		hash->tabla[0] = lista;
+		lista_iter = NULL;
 		posc = 0;
 	}
-	else 
+	else {
 		posc = _siguiente_elemento_valido(hash,0);
-	lista_iter = lista_iter_crear(hash->tabla[posc]);	
-	hash_iter_t *iter = malloc(sizeof(hash_iter_t));
-	if (iter == NULL) {
-		lista_iter_destruir(lista_iter);
-		return NULL;
-	}
+		lista_iter = lista_iter_crear(hash->tabla[posc]);
+		if (lista_iter == NULL) {
+			free(iter);
+			return NULL;
+		}
+
+	} 
 	iter->hash = (hash_t *)hash;
 	iter->lista_iter = lista_iter;
 	iter->posc = (size_t)posc;
@@ -93,16 +96,16 @@ bool hash_iter_avanzar(hash_iter_t *iter) {
 }
 
 const char *hash_iter_ver_actual(const hash_iter_t *iter) {
-	if (hash_iter_al_final(iter))
+	if (hash_iter_al_final(iter) == true)
 		return NULL;
 	campo_t * campo = lista_iter_ver_actual(iter->lista_iter);
-	char * cadena = malloc(strlen(campo->clave)+1);
-	strcpy(cadena,campo->clave);
-	return cadena;
+	if (campo == NULL)
+		return NULL;
+	return campo->clave;
 }
 
 bool hash_iter_al_final(const hash_iter_t *iter) {
-	return lista_iter_al_final(iter->lista_iter);
+	return (iter->lista_iter == NULL || lista_iter_al_final(iter->lista_iter));
 }
 
 void hash_iter_destruir(hash_iter_t* iter) {
@@ -229,9 +232,7 @@ bool _redimensionar_hash(hash_t * hash) {
 	hash_t * hash_aux = hash_crear(NULL);
 	if (hash_aux == NULL)
 		return false;
-	free(hash_aux->tabla);
-	lista_t **tabla_nueva = malloc(sizeof(lista_t *)*capacidad_nueva);
-	//lista_t **tabla_nueva = realloc(hash_aux->tabla,sizeof(lista_t *)*capacidad_nueva);
+	lista_t **tabla_nueva = realloc(hash_aux->tabla,sizeof(lista_t *)*capacidad_nueva);
 	if (tabla_nueva == NULL) {
 		hash_destruir(hash_aux);
 		return false;
@@ -327,11 +328,11 @@ void *hash_borrar(hash_t *hash, const char *clave){
 			campo_t * campo = lista_iter_borrar(iter->lista_iter);
 			dato = campo->dato;
 			campo_destruir(campo);
-			free((char *)clave_actual);
+			//free((char *)clave_actual);
 			hash->cantidad--;
 			break;
 		}
-		free((char *)clave_actual);
+		//free((char *)clave_actual);
 		hash_iter_avanzar(iter);
 	}
 	hash_iter_destruir(iter);
@@ -340,19 +341,16 @@ void *hash_borrar(hash_t *hash, const char *clave){
 
 void *hash_obtener(const hash_t *hash, const char *clave){
 	void * dato = NULL;
-	if(!hash_pertenece(hash, clave))
-		return NULL;
-        hash_iter_t * iter = hash_iter_crear(hash);
+	hash_iter_t * iter = hash_iter_crear(hash);
 	if (iter == NULL)
-		return  NULL;
-	while(hash_iter_al_final(iter) == false) {
+		return NULL;
+	while (hash_iter_al_final(iter) == false) {
 		const char * clave_actual = hash_iter_ver_actual(iter);
-		if (strcmp(clave_actual,clave) == 0){
-			dato = ((campo_t *)lista_iter_ver_actual(iter->lista_iter))->dato;
-			free((char *)clave_actual);
+		if (strcmp(clave_actual,clave) == 0) {
+			campo_t * campo = lista_iter_ver_actual(iter->lista_iter);
+			dato = campo->dato;
 			break;
 		}
-		free((char *)clave_actual);
 		hash_iter_avanzar(iter);
 	}
 	hash_iter_destruir(iter);
@@ -368,10 +366,8 @@ bool hash_pertenece(const hash_t *hash, const char *clave){
 		const char * clave_actual = hash_iter_ver_actual(iter);
 		if (strcmp(clave_actual,clave) == 0) {
 			estado = true;
-			free((char *)clave_actual);
 			break;
 		}
-		free((char *)clave_actual);
 		hash_iter_avanzar(iter);
 	}
 	hash_iter_destruir(iter);
@@ -395,7 +391,7 @@ void hash_destruir(hash_t *hash){
 				hash->funcion_destruccion(campo->dato);
 			campo_destruir((campo_t *)lista_iter_borrar(lista_iter));
 		}
-		free(lista);
+		lista_destruir(lista,NULL);
 		lista_iter_destruir(lista_iter);
 	}
 	free(hash->tabla);
