@@ -252,14 +252,6 @@ bool _redimensionar_hash(hash_t* hash) {
 	return true;
 }
 
-bool _hash_insertar_nuevo(hash_t* hash, campo_t* campo, size_t posc) {
-	if (hash->tabla[posc] == NULL) {
-		lista_t * lista = lista_crear();
-		hash->tabla[posc] = lista;
-	}
-	return lista_insertar_ultimo(hash->tabla[posc],campo);
-}
-
 bool hash_guardar(hash_t *hash, const char *clave, void *dato){
 	if (hash->cantidad/hash->capacidad >= FACTOR_DE_CARGA) {
 		if (_redimensionar_hash(hash) == false){
