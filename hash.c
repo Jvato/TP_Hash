@@ -252,85 +252,81 @@ bool _redimensionar_hash(hash_t* hash) {
 	return true;
 }
 
-bool hash_guardar(hash_t *hash, const char *clave, void *dato){
-	if (hash->cantidad/hash->capacidad >= FACTOR_DE_CARGA) {
-		if (_redimensionar_hash(hash) == false){
-			return false;
-		}
-	}
-	size_t indice = FNVHash_normalizada(clave,hash->capacidad);
+lista_iter_t* _hash_lista_iter_buscar_clave(const hash_t *hash, const char *clave) {
+	size_t indice = FNVHash_normalizada(clave, hash->capacidad);
 	if (hash->tabla[indice] == NULL) {
-		hash->tabla[indice] = lista_crear();
-		if (hash->tabla[indice] == NULL){
-			return false;
+		return NULL;
+	}
+	lista_iter_t* iter = lista_iter_crear(hash->tabla[indice]);
+	if (iter == NULL) {
+		return NULL;
+	}
+	while(!lista_iter_al_final(iter)) {
+		campo_t* campo = lista_iter_ver_actual(iter);
+		if (strcmp(campo->clave,clave) == 0) {
+			return iter;
 		}
+		lista_iter_avanzar(iter);
 	}
-	lista_iter_t* lista_iter = lista_iter_crear(hash->tabla[indice]);
-	if (lista_iter == NULL){
-		return false;
-	}
-	while (lista_iter_al_final(lista_iter) == false) {
-		campo_t* campo_actual = ((campo_t*)lista_iter_ver_actual(lista_iter));
-		if (strcmp(campo_actual->clave,clave) == 0) {
-			if (hash->funcion_destruccion != NULL){
-				hash->funcion_destruccion(campo_actual->dato);
+	lista_iter_destruir(iter);
+	return NULL;
+}
+
+
+bool hash_guardar(hash_t *hash, const char *clave, void *dato){
+	lista_iter_t* lista_iter = _hash_lista_iter_buscar_clave(hash,clave);
+	if (lista_iter == NULL) {
+		if (hash->cantidad/hash->capacidad >= FACTOR_DE_CARGA) {
+			if (_redimensionar_hash(hash) == false) {
+				return false;
 			}
-			campo_actual->dato = dato;
-			break;
 		}
-		lista_iter_avanzar(lista_iter);
-	}
-	if (lista_iter_al_final(lista_iter) == true) {
+		size_t indice = FNVHash_normalizada(clave,hash->capacidad);
 		campo_t* campo = crear_campo(clave,dato);
 		if (campo == NULL) {
+			return false;
+		}
+		if (hash->tabla[indice] == NULL) {
+			hash->tabla[indice] = lista_crear();
+			if (hash->tabla[indice] == NULL) {
+				campo_destruir(campo);
+				return false;
+			}
+		}
+		if (lista_insertar_ultimo(hash->tabla[indice],campo) == false) {
+			campo_destruir(campo);
+			return false;
+		}
+		hash->cantidad++;
+	}
+	else {
+		campo_t* campo_actual = lista_iter_ver_actual(lista_iter);
+		if (campo_actual == NULL) {
 			lista_iter_destruir(lista_iter);
 			return false;
 		}
-		lista_iter_insertar(lista_iter,campo);
-		hash->cantidad++;
+		if (hash->funcion_destruccion != NULL) {
+			hash->funcion_destruccion(campo_actual->dato);
+		}
+		campo_actual->dato = dato;
+		lista_iter_destruir(lista_iter);
 	}
-	lista_iter_destruir(lista_iter);
-	return true;	
-}
-
-campo_t* iterar_lista_indice(const hash_t *hash, const char *clave, lista_t* lista){
-    lista_iter_t* iter = lista_iter_crear(lista);
-    while(!lista_iter_al_final(iter)){
-        campo_t* campo = lista_iter_ver_actual(iter);
-        if(strcmp(campo->clave,clave) == 0){
-            lista_iter_destruir(iter);
-            return campo;
-        }
-        lista_iter_avanzar(iter);
-    }
-    lista_iter_destruir(iter);
-    return NULL;
-}
-
-void* borrar_indice_lista(hash_t *hash, const char *clave, lista_t* lista){
-	void* dato;
-    lista_iter_t* iter = lista_iter_crear(lista);
-    while(!lista_iter_al_final(iter)){
-        campo_t* campo = lista_iter_ver_actual(iter);
-        if(strcmp(campo->clave,clave) == 0){
-			dato = campo->dato;
-			campo_destruir(campo);
-			lista_iter_borrar(iter);
-        }
-        lista_iter_avanzar(iter);
-    }
-    lista_iter_destruir(iter);
-    return dato;
+	return true;
 }
 
 void *hash_borrar(hash_t *hash, const char *clave){
 	if(!hash_pertenece(hash, clave)){
 		return NULL;
 	}
-	size_t indice = FNVHash_normalizada(clave, hash->capacidad);
-	lista_t* lista = hash->tabla[indice];
-	void* dato = borrar_indice_lista(hash, clave, lista);
+	lista_iter_t* lista_iter = _hash_lista_iter_buscar_clave(hash, clave);
+	if (lista_iter == NULL) {
+		return NULL;
+	}
+	campo_t* campo = lista_iter_borrar(lista_iter);
 	hash->cantidad--;
+	void* dato = campo->dato;
+	campo_destruir(campo);
+	lista_iter_destruir(lista_iter);
 	return dato;
 }
 
@@ -338,20 +334,22 @@ void *hash_obtener(const hash_t *hash, const char *clave){
 	if(!hash_pertenece(hash, clave)){
 		return NULL;
 	}
-	size_t indice = FNVHash_normalizada(clave, hash->capacidad);
-	lista_t* lista = hash->tabla[indice];
-	campo_t* campo = iterar_lista_indice(hash, clave, lista);
+	lista_iter_t* lista_iter = _hash_lista_iter_buscar_clave(hash, clave);
+	if (lista_iter == NULL) {
+		return NULL;
+	}
+	campo_t* campo = lista_iter_ver_actual(lista_iter);
+	lista_iter_destruir(lista_iter);
 	return campo->dato;
 }
 
 bool hash_pertenece(const hash_t *hash, const char *clave){
-	size_t indice = FNVHash_normalizada(clave, hash->capacidad);
-	if(hash->tabla[indice] == NULL){
+	lista_iter_t* lista_iter = _hash_lista_iter_buscar_clave(hash,clave);
+	if (lista_iter == NULL) {
 		return false;
 	}
-	lista_t* lista = hash->tabla[indice];
-	campo_t* campo = iterar_lista_indice(hash, clave, lista);
-	return (campo != NULL);
+	lista_iter_destruir(lista_iter);
+	return true;
 }
 
 size_t hash_cantidad(const hash_t *hash){
